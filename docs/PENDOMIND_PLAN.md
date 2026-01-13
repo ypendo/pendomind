@@ -81,6 +81,7 @@ Single Qdrant collection with type filtering (more efficient than multiple colle
 - `debugging` - Debugging sessions, symptoms, solutions
 - `architecture` - System design, service dependencies
 - `error` - Error patterns and their fixes
+- `investigation` - Exploratory discoveries about architecture, code, or behavior
 
 ---
 
@@ -162,6 +163,7 @@ types:
     - debugging
     - architecture
     - error
+    - investigation
 ```
 
 ### User Confirmation Workflow

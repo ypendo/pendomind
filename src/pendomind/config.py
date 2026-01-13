@@ -36,6 +36,7 @@ class TypesConfig:
             "debugging",
             "architecture",
             "error",
+            "investigation",
         ]
     )
     overrides: dict[str, dict[str, float]] = field(default_factory=dict)
