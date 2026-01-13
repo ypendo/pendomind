@@ -1,0 +1,19 @@
+Help me to build something that described in @docs/PENDOMIND_PLAN.md
+Beside a simple vectordb with mcp I would like to have some control (when I work inside claude code or/and some configurations in pendomind which defines type of data we want to save or not) somehow to save real valueble data and not garbaging the db with not relevant info. Think about it how it can be
+implemented.
+Think deeply, use several relevant claude agents in parallel to research and create a tdd.md step-by-step plan for implementation.
+
+
+You have MCP_DOCKER mcp gateway with context7 for learnign things.
+Update @docs/PENDOMIND_PLAN.md with data quality control findings.
+-----
+
+
+bug - Bug reports, root causes, and fixes
+feature - Feature implementations, design decisions
+incident - Incident reports, RCAs, resolutions
+debugging - Debugging sessions, symptoms, solutions
+architecture - System design, service dependencies
+error - Error patterns and their fixes
+
+Add also new type: investigation - when Im investigating things with cluade code sometimes we figure out some new or exisitng architectures, bugs, features (we should inteligently update exisitng db entries if possible)

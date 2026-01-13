@@ -1,0 +1,54 @@
+[project]
+name = "pendomind"
+version = "0.1.0"
+description = "Engineering knowledge base with MCP integration and quality control"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "Yuri Bondarenko"}
+]
+keywords = ["mcp", "knowledge-base", "vector-db", "claude-code"]
+
+dependencies = [
+    "fastmcp>=2.9.0",
+    "qdrant-client>=1.7.0",
+    "fastembed>=0.4.0",
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "pytest-watch>=4.2.0",
+    "numpy>=1.24.0",  # For mocking FastEmbed in tests
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pendomind"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "integration: marks tests as integration tests (require Docker)",
+]
+
+[tool.coverage.run]
+source = ["src/pendomind"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]

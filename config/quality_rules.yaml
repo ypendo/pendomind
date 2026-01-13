@@ -1,0 +1,115 @@
+# PendoMind Quality Rules Configuration
+# Adjust these values to tune quality control behavior
+
+# Quality score thresholds
+thresholds:
+  min_quality_score: 0.65      # Below: auto-reject
+  auto_approve_score: 0.85     # Above: auto-approve without confirmation
+  duplicate_similarity: 0.90   # Similarity threshold for duplicate detection
+
+# Pending item settings
+pending:
+  ttl_minutes: 30              # Time before pending items expire
+  cleanup_interval_seconds: 60 # How often to clean expired items
+
+# Knowledge types
+types:
+  allowed:
+    - bug
+    - feature
+    - incident
+    - debugging
+    - architecture
+    - error
+
+  # Type-specific threshold overrides
+  overrides:
+    incident:
+      min_quality_score: 0.60  # More lenient for incidents (urgency matters)
+    architecture:
+      min_quality_score: 0.75  # Stricter for architecture docs
+
+# Content filtering rules
+filtering:
+  # Patterns to exclude (security - never store content matching these)
+  excluded_patterns:
+    - password
+    - api_key
+    - api-key
+    - secret
+    - token
+    - credential
+    - private_key
+    - private-key
+
+  # Content length limits (in words)
+  min_content_length: 15
+  max_content_length: 5000
+
+# Source credibility weights
+sources:
+  credibility:
+    github: 0.95       # Code-reviewed, contextual
+    confluence: 0.85   # Documented, reviewed
+    jira: 0.80         # Structured tickets
+    claude_session: 0.70  # AI-assisted, needs verification
+    slack: 0.60        # Conversational, may lack context
+
+# Quality scoring weights
+scoring:
+  weights:
+    relevance: 0.40
+    completeness: 0.35
+    credibility: 0.25
+
+  # Domain keywords for relevance scoring
+  domain_keywords:
+    high_relevance:
+      - bug
+      - fix
+      - error
+      - exception
+      - stack trace
+      - implementation
+      - feature
+      - refactor
+      - optimization
+      - incident
+      - outage
+      - RCA
+      - root cause
+      - architecture
+      - design
+      - pattern
+      - service
+    medium_relevance:
+      - configuration
+      - deploy
+      - test
+      - review
+      - documentation
+      - setup
+      - migration
+
+# Qdrant configuration
+qdrant:
+  host: localhost
+  port: 6333
+  collection_name: pendomind_knowledge
+
+  # Payload indexes for fast filtering
+  payload_indexes:
+    - field: type
+      type: keyword
+    - field: source
+      type: keyword
+    - field: tags
+      type: keyword
+    - field: created_at
+      type: datetime
+
+# Embedding configuration
+embeddings:
+  model: text-embedding-3-small
+  dimensions: 1536
+  batch_size: 100
