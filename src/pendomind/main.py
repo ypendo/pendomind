@@ -61,7 +61,7 @@ middleware.pending_store = pending_store
 async def search_knowledge(
     query: Annotated[str, "Natural language search query"],
     type_filter: Annotated[
-        str | None, "Filter by type: bug, feature, incident, debugging, architecture, error"
+        str | None, "Filter by type: bug, feature, incident, debugging, architecture, error, investigation"
     ] = None,
     limit: Annotated[int, "Maximum results to return (default 10)"] = 10,
 ) -> list[dict]:
@@ -78,7 +78,7 @@ async def remember_knowledge(
     content: Annotated[str, "The knowledge to store (detailed description)"],
     type: Annotated[
         str,
-        "Type: bug, feature, incident, debugging, architecture, error",
+        "Type: bug, feature, incident, debugging, architecture, error, investigation",
     ],
     tags: Annotated[list[str], "Tags for categorization"],
     source: Annotated[

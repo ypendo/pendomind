@@ -65,12 +65,13 @@ Claude Code ──stdio──▶ FastMCP Server ──▶ Qdrant (Docker)
 
 | Tool                               | Description                              |
 | ---------------------------------- | ---------------------------------------- |
-| `search(query, type?)`             | Semantic search across all knowledge     |
-| `remember(content, type, tags)`    | Analyze + store with quality workflow    |
-| `remember_confirm(pending_id)`     | Confirm/reject pending storage           |
-| `recall(query, type?)`             | Retrieve relevant context                |
-| `list_similar(content)`            | Find duplicates before storing           |
-| `get_context(file_path)`           | Get knowledge related to file/service    |
+| `search_knowledge(query, type_filter?, limit?)`             | Semantic search across all knowledge     |
+| `remember_knowledge(content, type, tags, source?, file_paths?)`    | Analyze + store with quality workflow    |
+| `confirm_knowledge(pending_id, approved)`     | Confirm/reject pending storage           |
+| `recall_context(query, type_filter?, limit?)`             | Retrieve formatted context                |
+| `find_similar(content)`            | Find duplicates before storing           |
+| `get_file_context(file_path)`           | Get knowledge related to file/service    |
+| `list_pending()`                   | List all pending entries awaiting confirmation |
 
 ### Knowledge Types
 
