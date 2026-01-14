@@ -17,10 +17,10 @@ class TestStoreAndSearchWorkflow:
         """Mock Qdrant and FastEmbed at module level."""
         with patch("pendomind.knowledge.QdrantClient") as mock_qdrant, \
              patch("pendomind.knowledge.TextEmbedding") as mock_fastembed:
-            # Setup Qdrant mock
+            # Setup Qdrant mock (qdrant-client 1.9+ API uses query_points)
             mock_qdrant_client = MagicMock()
             mock_qdrant_client.collection_exists.return_value = True
-            mock_qdrant_client.search.return_value = []
+            mock_qdrant_client.query_points.return_value = MagicMock(points=[])
             mock_qdrant.return_value = mock_qdrant_client
 
             # Setup FastEmbed mock (runs locally, returns numpy arrays)
@@ -129,7 +129,7 @@ class TestPendingConfirmationWorkflow:
              patch("pendomind.knowledge.TextEmbedding") as mock_fastembed:
             mock_qdrant_client = MagicMock()
             mock_qdrant_client.collection_exists.return_value = True
-            mock_qdrant_client.search.return_value = []
+            mock_qdrant_client.query_points.return_value = MagicMock(points=[])
             mock_qdrant.return_value = mock_qdrant_client
 
             mock_embedder = MagicMock()
@@ -245,17 +245,19 @@ class TestDuplicateDetectionWorkflow:
              patch("pendomind.knowledge.TextEmbedding") as mock_fastembed:
             mock_qdrant_client = MagicMock()
             mock_qdrant_client.collection_exists.return_value = True
-            # Return a similar entry when searching
-            mock_qdrant_client.search.return_value = [
-                MagicMock(
-                    id="existing-entry",
-                    score=0.95,  # High similarity
-                    payload={
-                        "content": "Similar bug fix for database timeout",
-                        "type": "bug",
-                    },
-                )
-            ]
+            # Return a similar entry when searching (qdrant-client 1.9+ API)
+            mock_qdrant_client.query_points.return_value = MagicMock(
+                points=[
+                    MagicMock(
+                        id="existing-entry",
+                        score=0.95,  # High similarity
+                        payload={
+                            "content": "Similar bug fix for database timeout",
+                            "type": "bug",
+                        },
+                    )
+                ]
+            )
             mock_qdrant.return_value = mock_qdrant_client
 
             mock_embedder = MagicMock()
@@ -298,28 +300,31 @@ class TestSearchAndRecallWorkflow:
              patch("pendomind.knowledge.TextEmbedding") as mock_fastembed:
             mock_qdrant_client = MagicMock()
             mock_qdrant_client.collection_exists.return_value = True
-            mock_qdrant_client.search.return_value = [
-                MagicMock(
-                    id="entry-1",
-                    score=0.92,
-                    payload={
-                        "content": "Fixed database connection pool leak",
-                        "type": "bug",
-                        "tags": ["database"],
-                        "source": "github",
-                    },
-                ),
-                MagicMock(
-                    id="entry-2",
-                    score=0.85,
-                    payload={
-                        "content": "Added connection pool monitoring",
-                        "type": "feature",
-                        "tags": ["database", "monitoring"],
-                        "source": "confluence",
-                    },
-                ),
-            ]
+            # qdrant-client 1.9+ API uses query_points returning QueryResponse
+            mock_qdrant_client.query_points.return_value = MagicMock(
+                points=[
+                    MagicMock(
+                        id="entry-1",
+                        score=0.92,
+                        payload={
+                            "content": "Fixed database connection pool leak",
+                            "type": "bug",
+                            "tags": ["database"],
+                            "source": "github",
+                        },
+                    ),
+                    MagicMock(
+                        id="entry-2",
+                        score=0.85,
+                        payload={
+                            "content": "Added connection pool monitoring",
+                            "type": "feature",
+                            "tags": ["database", "monitoring"],
+                            "source": "confluence",
+                        },
+                    ),
+                ]
+            )
             mock_qdrant.return_value = mock_qdrant_client
 
             mock_embedder = MagicMock()

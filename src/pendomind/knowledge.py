@@ -67,16 +67,21 @@ class KnowledgeBase:
         """Generate deterministic ID from content and source.
 
         This allows idempotent upserts - same content+source = same ID.
+        Uses UUID format as required by qdrant-client 1.9+.
 
         Args:
             content: The knowledge content
             source: Source of the content
 
         Returns:
-            Deterministic hash-based ID
+            Deterministic UUID-formatted ID
         """
+        import uuid
+
         hash_input = f"{content}|{source}"
-        return hashlib.sha256(hash_input.encode()).hexdigest()[:16]
+        # Take first 32 hex chars to create a valid UUID
+        hex_digest = hashlib.sha256(hash_input.encode()).hexdigest()[:32]
+        return str(uuid.UUID(hex_digest))
 
     async def store(
         self,
@@ -153,9 +158,10 @@ class KnowledgeBase:
                 ]
             )
 
-        results = self._client.search(
+        # Use query_points (qdrant-client 1.9+ API)
+        response = self._client.query_points(
             collection_name=self.config.qdrant.collection_name,
-            query_vector=embedding,
+            query=embedding,
             query_filter=query_filter,
             limit=limit,
         )
@@ -166,7 +172,7 @@ class KnowledgeBase:
                 "score": hit.score,
                 **hit.payload,
             }
-            for hit in results
+            for hit in response.points
         ]
 
     async def find_duplicates(
@@ -186,15 +192,15 @@ class KnowledgeBase:
         if threshold is None:
             threshold = self.config.thresholds.duplicate_similarity
 
-        # Search for similar items
-        results = self._client.search(
+        # Search for similar items (qdrant-client 1.9+ API)
+        response = self._client.query_points(
             collection_name=self.config.qdrant.collection_name,
-            query_vector=embedding,
+            query=embedding,
             limit=5,  # Only check top 5 for duplicates
         )
 
         duplicates = []
-        for hit in results:
+        for hit in response.points:
             if hit.score >= threshold:
                 duplicates.append(
                     {

@@ -213,18 +213,21 @@ class TestKnowledgeBaseSearch:
         """Search should return formatted results from Qdrant."""
         kb, mock_client = mock_kb
 
-        mock_client.search.return_value = [
-            MagicMock(
-                id="result-1",
-                score=0.95,
-                payload={
-                    "content": "Bug fix content",
-                    "type": "bug",
-                    "tags": ["test"],
-                    "source": "github",
-                },
-            )
-        ]
+        # qdrant-client 1.9+ uses query_points returning QueryResponse with .points
+        mock_client.query_points.return_value = MagicMock(
+            points=[
+                MagicMock(
+                    id="result-1",
+                    score=0.95,
+                    payload={
+                        "content": "Bug fix content",
+                        "type": "bug",
+                        "tags": ["test"],
+                        "source": "github",
+                    },
+                )
+            ]
+        )
 
         results = await kb.search([0.1] * 1536)
 
@@ -237,33 +240,33 @@ class TestKnowledgeBaseSearch:
     async def test_search_with_type_filter(self, mock_kb):
         """Search should apply type filter when provided."""
         kb, mock_client = mock_kb
-        mock_client.search.return_value = []
+        mock_client.query_points.return_value = MagicMock(points=[])
 
         await kb.search([0.1] * 1536, type_filter="incident")
 
-        call_kwargs = mock_client.search.call_args[1]
+        call_kwargs = mock_client.query_points.call_args[1]
         assert call_kwargs["query_filter"] is not None
 
     @pytest.mark.asyncio
     async def test_search_respects_limit(self, mock_kb):
         """Search should respect the limit parameter."""
         kb, mock_client = mock_kb
-        mock_client.search.return_value = []
+        mock_client.query_points.return_value = MagicMock(points=[])
 
         await kb.search([0.1] * 1536, limit=5)
 
-        call_kwargs = mock_client.search.call_args[1]
+        call_kwargs = mock_client.query_points.call_args[1]
         assert call_kwargs["limit"] == 5
 
     @pytest.mark.asyncio
     async def test_search_default_limit(self, mock_kb):
         """Search should use default limit of 10."""
         kb, mock_client = mock_kb
-        mock_client.search.return_value = []
+        mock_client.query_points.return_value = MagicMock(points=[])
 
         await kb.search([0.1] * 1536)
 
-        call_kwargs = mock_client.search.call_args[1]
+        call_kwargs = mock_client.query_points.call_args[1]
         assert call_kwargs["limit"] == 10
 
 
@@ -292,18 +295,21 @@ class TestKnowledgeBaseDuplicates:
         """find_duplicates should return items above similarity threshold."""
         kb, mock_client = mock_kb
 
-        mock_client.search.return_value = [
-            MagicMock(
-                id="dup-1",
-                score=0.95,
-                payload={"content": "Very similar content", "type": "bug"},
-            ),
-            MagicMock(
-                id="dup-2",
-                score=0.85,  # Below 0.90 threshold
-                payload={"content": "Somewhat similar", "type": "bug"},
-            ),
-        ]
+        # qdrant-client 1.9+ uses query_points returning QueryResponse with .points
+        mock_client.query_points.return_value = MagicMock(
+            points=[
+                MagicMock(
+                    id="dup-1",
+                    score=0.95,
+                    payload={"content": "Very similar content", "type": "bug"},
+                ),
+                MagicMock(
+                    id="dup-2",
+                    score=0.85,  # Below 0.90 threshold
+                    payload={"content": "Somewhat similar", "type": "bug"},
+                ),
+            ]
+        )
 
         duplicates = await kb.find_duplicates([0.1] * 1536, threshold=0.90)
 
@@ -317,13 +323,15 @@ class TestKnowledgeBaseDuplicates:
         """find_duplicates should return empty list when no similar items."""
         kb, mock_client = mock_kb
 
-        mock_client.search.return_value = [
-            MagicMock(
-                id="not-dup",
-                score=0.50,  # Well below threshold
-                payload={"content": "Different content", "type": "bug"},
-            ),
-        ]
+        mock_client.query_points.return_value = MagicMock(
+            points=[
+                MagicMock(
+                    id="not-dup",
+                    score=0.50,  # Well below threshold
+                    payload={"content": "Different content", "type": "bug"},
+                ),
+            ]
+        )
 
         duplicates = await kb.find_duplicates([0.1] * 1536, threshold=0.90)
 
@@ -335,13 +343,15 @@ class TestKnowledgeBaseDuplicates:
         kb, mock_client = mock_kb
         kb.config.thresholds.duplicate_similarity = 0.85
 
-        mock_client.search.return_value = [
-            MagicMock(
-                id="dup-1",
-                score=0.87,
-                payload={"content": "Similar content", "type": "bug"},
-            ),
-        ]
+        mock_client.query_points.return_value = MagicMock(
+            points=[
+                MagicMock(
+                    id="dup-1",
+                    score=0.87,
+                    payload={"content": "Similar content", "type": "bug"},
+                ),
+            ]
+        )
 
         # Don't specify threshold - should use config value
         duplicates = await kb.find_duplicates([0.1] * 1536)
