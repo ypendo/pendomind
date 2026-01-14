@@ -400,3 +400,45 @@ async def get_context(
     entries = await kb.get_by_file_path(file_path)
 
     return {"entries": entries, "file_path": file_path, "count": len(entries)}
+
+
+async def list_all(
+    limit: int = 100,
+    type_filter: str | None = None,
+    kb: Any | None = None,
+) -> list[dict[str, Any]]:
+    """List all knowledge entries with summaries.
+
+    Returns entries with truncated content for quick scanning.
+
+    Args:
+        limit: Maximum entries to return
+        type_filter: Optional type filter (bug, feature, etc.)
+        kb: KnowledgeBase instance (injected for testing)
+
+    Returns:
+        List of entries with summary previews
+    """
+    if kb is None:
+        from pendomind.knowledge import KnowledgeBase
+
+        kb = KnowledgeBase()
+
+    entries = await kb.get_all(type_filter=type_filter, limit=limit)
+
+    return [
+        {
+            "id": entry["id"],
+            "type": entry.get("type"),
+            "summary": (
+                entry.get("content", "")[:150] + "..."
+                if len(entry.get("content", "")) > 150
+                else entry.get("content", "")
+            ),
+            "tags": entry.get("tags", []),
+            "source": entry.get("source"),
+            "file_paths": entry.get("file_paths"),
+            "created_at": entry.get("created_at"),
+        }
+        for entry in entries
+    ]

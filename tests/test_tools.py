@@ -715,3 +715,102 @@ class TestGetContextTool:
         result = await get_context("new/file.py", kb=mock_kb)
 
         assert result["entries"] == []
+
+
+class TestListAllTool:
+    """Test the list_all MCP tool."""
+
+    @pytest.fixture
+    def mock_kb(self):
+        """Mock knowledge base with entries."""
+        mock = MagicMock()
+        mock.get_all = AsyncMock(
+            return_value=[
+                {
+                    "id": "entry-1",
+                    "content": "Bug fix for database connection pool exhaustion causing 500 errors in production API endpoints during peak load times on Monday morning. This was a critical issue affecting many users.",
+                    "type": "bug",
+                    "tags": ["database", "production"],
+                    "source": "github",
+                    "file_paths": ["src/api.py"],
+                    "created_at": "2026-01-14T12:00:00+00:00",
+                },
+                {
+                    "id": "entry-2",
+                    "content": "Short note",
+                    "type": "feature",
+                    "tags": ["config"],
+                    "source": "confluence",
+                    "file_paths": None,
+                    "created_at": "2026-01-14T13:00:00+00:00",
+                },
+            ]
+        )
+        return mock
+
+    @pytest.mark.asyncio
+    async def test_list_all_returns_formatted_entries(self, mock_kb):
+        """list_all() should return entries with summaries."""
+        from pendomind.tools import list_all
+
+        results = await list_all(kb=mock_kb)
+
+        assert len(results) == 2
+        assert results[0]["id"] == "entry-1"
+        assert results[0]["type"] == "bug"
+        assert results[0]["tags"] == ["database", "production"]
+        assert results[0]["source"] == "github"
+
+    @pytest.mark.asyncio
+    async def test_list_all_truncates_long_content(self, mock_kb):
+        """list_all() should truncate content to 150 chars with ellipsis."""
+        from pendomind.tools import list_all
+
+        results = await list_all(kb=mock_kb)
+
+        # First entry has content > 150 chars
+        assert len(results[0]["summary"]) == 153  # 150 + "..."
+        assert results[0]["summary"].endswith("...")
+
+    @pytest.mark.asyncio
+    async def test_list_all_keeps_short_content(self, mock_kb):
+        """list_all() should keep short content as-is."""
+        from pendomind.tools import list_all
+
+        results = await list_all(kb=mock_kb)
+
+        # Second entry has short content
+        assert results[1]["summary"] == "Short note"
+        assert not results[1]["summary"].endswith("...")
+
+    @pytest.mark.asyncio
+    async def test_list_all_with_type_filter(self, mock_kb):
+        """list_all() should pass type filter to KB."""
+        from pendomind.tools import list_all
+
+        await list_all(type_filter="bug", kb=mock_kb)
+
+        mock_kb.get_all.assert_called_once()
+        call_kwargs = mock_kb.get_all.call_args[1]
+        assert call_kwargs["type_filter"] == "bug"
+
+    @pytest.mark.asyncio
+    async def test_list_all_respects_limit(self, mock_kb):
+        """list_all() should pass limit to KB."""
+        from pendomind.tools import list_all
+
+        await list_all(limit=50, kb=mock_kb)
+
+        call_kwargs = mock_kb.get_all.call_args[1]
+        assert call_kwargs["limit"] == 50
+
+    @pytest.mark.asyncio
+    async def test_list_all_empty_kb(self, mock_kb):
+        """list_all() should return empty list for empty KB."""
+        mock_kb.get_all = AsyncMock(return_value=[])
+
+        from pendomind.tools import list_all
+
+        results = await list_all(kb=mock_kb)
+
+        assert results == []

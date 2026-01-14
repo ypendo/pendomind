@@ -245,6 +245,48 @@ class KnowledgeBase:
             for point in results
         ]
 
+    async def get_all(
+        self,
+        type_filter: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Get all knowledge entries, optionally filtered by type.
+
+        Uses Qdrant scroll API to iterate through all entries without
+        requiring an embedding vector (unlike search).
+
+        Args:
+            type_filter: Optional type to filter by (bug, feature, etc.)
+            limit: Maximum results to return
+
+        Returns:
+            List of all entries with metadata
+        """
+        scroll_filter = None
+        if type_filter:
+            scroll_filter = Filter(
+                must=[
+                    FieldCondition(
+                        key="type",
+                        match=MatchValue(value=type_filter),
+                    )
+                ]
+            )
+
+        results, _ = self._client.scroll(
+            collection_name=self.config.qdrant.collection_name,
+            scroll_filter=scroll_filter,
+            limit=limit,
+        )
+
+        return [
+            {
+                "id": point.id,
+                **point.payload,
+            }
+            for point in results
+        ]
+
     async def get_embedding(self, content: str) -> list[float]:
         """Generate embedding for content using FastEmbed (runs locally).
 

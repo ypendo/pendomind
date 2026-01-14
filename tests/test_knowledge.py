@@ -482,6 +482,105 @@ class TestKnowledgeBaseEmbedding:
         assert all(isinstance(x, float) for x in embedding)
 
 
+class TestKnowledgeBaseGetAll:
+    """Test listing all knowledge entries."""
+
+    @pytest.fixture
+    def mock_kb(self):
+        """Create KB with mocked Qdrant client."""
+        with patch("pendomind.knowledge.QdrantClient") as mock_qdrant, \
+             patch("pendomind.knowledge.TextEmbedding"):
+            mock_client = MagicMock()
+            mock_client.collection_exists.return_value = True
+            mock_qdrant.return_value = mock_client
+
+            from pendomind.knowledge import KnowledgeBase
+            from pendomind.config import PendoMindConfig
+
+            config = PendoMindConfig()
+            kb = KnowledgeBase(config)
+            kb._client = mock_client
+            yield kb, mock_client
+
+    @pytest.mark.asyncio
+    async def test_get_all_returns_all_entries(self, mock_kb):
+        """get_all should return all entries from Qdrant."""
+        kb, mock_client = mock_kb
+
+        mock_client.scroll.return_value = (
+            [
+                MagicMock(
+                    id="entry-1",
+                    payload={
+                        "content": "Bug fix content",
+                        "type": "bug",
+                        "tags": ["test"],
+                    },
+                ),
+                MagicMock(
+                    id="entry-2",
+                    payload={
+                        "content": "Feature content",
+                        "type": "feature",
+                        "tags": ["new"],
+                    },
+                ),
+            ],
+            None,  # No next page
+        )
+
+        results = await kb.get_all()
+
+        assert len(results) == 2
+        assert results[0]["id"] == "entry-1"
+        assert results[0]["type"] == "bug"
+        assert results[1]["id"] == "entry-2"
+        assert results[1]["type"] == "feature"
+
+    @pytest.mark.asyncio
+    async def test_get_all_with_type_filter(self, mock_kb):
+        """get_all should apply type filter when provided."""
+        kb, mock_client = mock_kb
+        mock_client.scroll.return_value = ([], None)
+
+        await kb.get_all(type_filter="incident")
+
+        call_kwargs = mock_client.scroll.call_args[1]
+        assert call_kwargs["scroll_filter"] is not None
+
+    @pytest.mark.asyncio
+    async def test_get_all_respects_limit(self, mock_kb):
+        """get_all should respect the limit parameter."""
+        kb, mock_client = mock_kb
+        mock_client.scroll.return_value = ([], None)
+
+        await kb.get_all(limit=50)
+
+        call_kwargs = mock_client.scroll.call_args[1]
+        assert call_kwargs["limit"] == 50
+
+    @pytest.mark.asyncio
+    async def test_get_all_empty_collection(self, mock_kb):
+        """get_all should return empty list for empty collection."""
+        kb, mock_client = mock_kb
+        mock_client.scroll.return_value = ([], None)
+
+        results = await kb.get_all()
+
+        assert results == []
+
+    @pytest.mark.asyncio
+    async def test_get_all_without_filter(self, mock_kb):
+        """get_all without filter should not apply scroll_filter."""
+        kb, mock_client = mock_kb
+        mock_client.scroll.return_value = ([], None)
+
+        await kb.get_all()
+
+        call_kwargs = mock_client.scroll.call_args[1]
+        assert call_kwargs["scroll_filter"] is None
+
+
 class TestKnowledgeBaseDelete:
     """Test deleting knowledge entries."""
 

@@ -31,6 +31,7 @@ from pendomind.middleware import QualityMiddleware
 from pendomind.tools import (
     PendingStore,
     get_context,
+    list_all,
     list_similar,
     recall,
     remember,
@@ -161,6 +162,21 @@ async def get_file_context(
     Useful when working on a file to see historical context.
     """
     return await get_context(file_path, kb=kb)
+
+
+@mcp.tool()
+async def list_all_knowledge(
+    limit: Annotated[int, "Maximum entries to return (default 100)"] = 100,
+    type_filter: Annotated[
+        str | None, "Filter by type: bug, feature, incident, debugging, architecture, error, investigation"
+    ] = None,
+) -> list[dict]:
+    """List all stored knowledge entries with short summaries.
+
+    Returns entries with ID, type, 150-char summary, tags, source, file paths, and timestamps.
+    Useful for browsing the entire knowledge base without semantic search.
+    """
+    return await list_all(limit=limit, type_filter=type_filter, kb=kb)
 
 
 @mcp.tool()
