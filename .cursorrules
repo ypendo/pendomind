@@ -1,0 +1,15 @@
+# PendoMind Cursor Rules
+
+## Required Context
+
+Before starting any task, always read:
+
+1. `CLAUDE.md` - Contains project architecture, commands, and testing patterns
+2. `README.md` - Contains usage guide, MCP tools, and quality control info
+
+## Project Guidelines
+
+- Use the pyenv virtual environment: `~/.pyenv/versions/3.12.2/envs/pendomind`
+- Run tests with: `~/.pyenv/versions/3.12.2/envs/pendomind/bin/pytest tests/ -v`
+- This is a FastMCP server with Qdrant vector database
+- All tests mock external dependencies (see `tests/conftest.py`)
