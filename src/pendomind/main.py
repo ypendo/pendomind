@@ -30,6 +30,7 @@ from pendomind.knowledge import KnowledgeBase
 from pendomind.middleware import QualityMiddleware
 from pendomind.tools import (
     PendingStore,
+    delete,
     get_context,
     list_all,
     list_similar,
@@ -37,14 +38,24 @@ from pendomind.tools import (
     remember,
     remember_confirm,
     search,
+    update,
+    upsert,
 )
 
 # Initialize FastMCP server
 mcp = FastMCP(
     name="pendomind",
     instructions="""PendoMind is an engineering knowledge base for storing and retrieving
-technical knowledge. Use search() to find relevant information, remember() to store new
-knowledge (with quality control), and get_context() for file-related context.""",
+technical knowledge. Use search_knowledge() to find relevant information.
+
+IMPORTANT - Choosing the right tool for storing knowledge:
+- upsert_knowledge(): Use when UPDATING existing knowledge (incidents, bugs, features).
+  It automatically finds similar entries and updates them instead of creating duplicates.
+  This is the RECOMMENDED tool for ongoing investigations or evolving documentation.
+- remember_knowledge(): Use for storing BRAND NEW knowledge that doesn't update existing entries.
+  Has quality control with auto-approve/pending/reject workflow.
+- update_knowledge(id): Use when you have a specific entry ID to update directly.
+- delete_knowledge(id): Use to remove obsolete entries.""",
 )
 
 # Initialize shared dependencies
@@ -196,6 +207,73 @@ async def list_pending() -> list[dict]:
         }
         for item in items
     ]
+
+
+@mcp.tool()
+async def upsert_knowledge(
+    content: Annotated[str, "The knowledge to store or update"],
+    type: Annotated[
+        str,
+        "Type: bug, feature, incident, debugging, architecture, error, investigation",
+    ],
+    tags: Annotated[list[str], "Tags for categorization"],
+    source: Annotated[
+        str, "Source: github, confluence, jira, slack, claude_session"
+    ] = "claude_session",
+    file_paths: Annotated[list[str] | None, "Related file paths (optional)"] = None,
+    similarity_threshold: Annotated[
+        float, "How similar an existing entry must be to update (default 0.85)"
+    ] = 0.85,
+) -> dict:
+    """Smart update-or-create: finds similar entry and updates it, or creates new.
+
+    RECOMMENDED for updating existing knowledge (incidents, bugs, ongoing investigations).
+    Automatically finds the most similar existing entry and updates it instead of
+    creating duplicates. If no similar entry is found, creates a new one.
+
+    Example workflow:
+    - Day 1: upsert_knowledge("Investigating 502 errors...", type="incident")  # creates new
+    - Day 2: upsert_knowledge("Found: upstream timeout...", type="incident")   # updates existing
+    - Day 3: upsert_knowledge("RESOLVED: Fixed by...", type="incident")        # updates same entry
+    """
+    return await upsert(
+        content=content,
+        type=type,
+        tags=tags,
+        source=source,
+        file_paths=file_paths,
+        similarity_threshold=similarity_threshold,
+        kb=kb,
+    )
+
+
+@mcp.tool()
+async def update_knowledge(
+    id: Annotated[str, "ID of the entry to update (use search_knowledge to find IDs)"],
+    content: Annotated[str | None, "New content (re-embeds if changed)"] = None,
+    tags: Annotated[list[str] | None, "New tags list"] = None,
+    type: Annotated[str | None, "New type"] = None,
+    file_paths: Annotated[list[str] | None, "New file paths list"] = None,
+) -> dict:
+    """Update an existing knowledge entry by ID.
+
+    Use search_knowledge() or list_all_knowledge() to find the entry ID first.
+    Only provided fields are updated; others remain unchanged.
+    If content changes, the entry is re-embedded for accurate search.
+    """
+    return await update(id=id, content=content, tags=tags, type=type, file_paths=file_paths, kb=kb)
+
+
+@mcp.tool()
+async def delete_knowledge(
+    id: Annotated[str, "ID of the entry to delete"],
+) -> dict:
+    """Delete a knowledge entry by ID.
+
+    Use this to remove obsolete or incorrect entries.
+    This action is irreversible.
+    """
+    return await delete(id=id, kb=kb)
 
 
 def main():

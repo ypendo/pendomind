@@ -609,3 +609,205 @@ class TestKnowledgeBaseDelete:
         await kb.delete("entry-123")
 
         mock_client.delete.assert_called_once()
+
+
+class TestKnowledgeBaseGetById:
+    """Test retrieving knowledge entries by ID."""
+
+    @pytest.fixture
+    def mock_kb(self):
+        """Create KB with mocked Qdrant client."""
+        with patch("pendomind.knowledge.QdrantClient") as mock_qdrant, \
+             patch("pendomind.knowledge.TextEmbedding"):
+            mock_client = MagicMock()
+            mock_client.collection_exists.return_value = True
+            mock_qdrant.return_value = mock_client
+
+            from pendomind.knowledge import KnowledgeBase
+            from pendomind.config import PendoMindConfig
+
+            config = PendoMindConfig()
+            kb = KnowledgeBase(config)
+            kb._client = mock_client
+            yield kb, mock_client
+
+    @pytest.mark.asyncio
+    async def test_get_by_id_returns_entry(self, mock_kb):
+        """get_by_id should return entry with payload and vector."""
+        kb, mock_client = mock_kb
+
+        mock_client.retrieve.return_value = [
+            MagicMock(
+                id="entry-123",
+                vector=[0.1] * 384,
+                payload={
+                    "content": "Bug fix content",
+                    "type": "bug",
+                    "tags": ["test"],
+                    "source": "github",
+                    "created_at": "2026-01-14T12:00:00+00:00",
+                },
+            )
+        ]
+
+        result = await kb.get_by_id("entry-123")
+
+        assert result is not None
+        assert result["id"] == "entry-123"
+        assert result["content"] == "Bug fix content"
+        assert result["type"] == "bug"
+        assert "vector" in result
+
+    @pytest.mark.asyncio
+    async def test_get_by_id_not_found(self, mock_kb):
+        """get_by_id should return None if entry not found."""
+        kb, mock_client = mock_kb
+        mock_client.retrieve.return_value = []
+
+        result = await kb.get_by_id("nonexistent-id")
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_get_by_id_requests_vectors(self, mock_kb):
+        """get_by_id should request vectors for potential updates."""
+        kb, mock_client = mock_kb
+        mock_client.retrieve.return_value = []
+
+        await kb.get_by_id("entry-123")
+
+        mock_client.retrieve.assert_called_once()
+        call_kwargs = mock_client.retrieve.call_args[1]
+        assert call_kwargs["with_vectors"] is True
+
+
+class TestKnowledgeBaseUpdate:
+    """Test updating knowledge entries."""
+
+    @pytest.fixture
+    def mock_kb(self):
+        """Create KB with mocked Qdrant client and embedder."""
+        import numpy as np
+
+        with patch("pendomind.knowledge.QdrantClient") as mock_qdrant, \
+             patch("pendomind.knowledge.TextEmbedding") as mock_fastembed:
+            mock_client = MagicMock()
+            mock_client.collection_exists.return_value = True
+            mock_qdrant.return_value = mock_client
+
+            mock_embedder = MagicMock()
+            mock_embedder.embed.return_value = iter([np.array([0.2] * 384)])
+            mock_fastembed.return_value = mock_embedder
+
+            from pendomind.knowledge import KnowledgeBase
+            from pendomind.config import PendoMindConfig
+
+            config = PendoMindConfig()
+            kb = KnowledgeBase(config)
+            kb._client = mock_client
+            kb._embedder = mock_embedder
+            yield kb, mock_client, mock_embedder
+
+    @pytest.mark.asyncio
+    async def test_update_content_reembeds(self, mock_kb):
+        """Updating content should re-embed and upsert."""
+        import numpy as np
+
+        kb, mock_client, mock_embedder = mock_kb
+
+        # Setup existing entry
+        mock_client.retrieve.return_value = [
+            MagicMock(
+                id="entry-123",
+                vector=[0.1] * 384,
+                payload={
+                    "content": "Original content",
+                    "type": "bug",
+                    "tags": ["test"],
+                    "source": "github",
+                    "created_at": "2026-01-14T12:00:00+00:00",
+                },
+            )
+        ]
+        mock_embedder.embed.return_value = iter([np.array([0.3] * 384)])
+
+        result = await kb.update(
+            point_id="entry-123",
+            content="Updated content with more details",
+        )
+
+        # Should have called upsert (not set_payload) since content changed
+        mock_client.upsert.assert_called_once()
+        assert result["content"] == "Updated content with more details"
+        assert "updated_at" in result
+
+    @pytest.mark.asyncio
+    async def test_update_metadata_only_uses_set_payload(self, mock_kb):
+        """Updating only metadata should use set_payload (efficient)."""
+        kb, mock_client, mock_embedder = mock_kb
+
+        mock_client.retrieve.return_value = [
+            MagicMock(
+                id="entry-123",
+                vector=[0.1] * 384,
+                payload={
+                    "content": "Original content",
+                    "type": "bug",
+                    "tags": ["test"],
+                    "source": "github",
+                    "created_at": "2026-01-14T12:00:00+00:00",
+                },
+            )
+        ]
+
+        result = await kb.update(
+            point_id="entry-123",
+            tags=["updated", "tags"],
+        )
+
+        # Should have called set_payload (not upsert) since content didn't change
+        mock_client.set_payload.assert_called_once()
+        mock_client.upsert.assert_not_called()
+        assert result["tags"] == ["updated", "tags"]
+        assert result["content"] == "Original content"
+
+    @pytest.mark.asyncio
+    async def test_update_not_found_raises(self, mock_kb):
+        """Updating non-existent entry should raise ValueError."""
+        kb, mock_client, mock_embedder = mock_kb
+        mock_client.retrieve.return_value = []
+
+        with pytest.raises(ValueError, match="Entry not found"):
+            await kb.update(point_id="nonexistent-id", content="New content")
+
+    @pytest.mark.asyncio
+    async def test_update_preserves_original_fields(self, mock_kb):
+        """Update should preserve fields not being updated."""
+        kb, mock_client, mock_embedder = mock_kb
+
+        mock_client.retrieve.return_value = [
+            MagicMock(
+                id="entry-123",
+                vector=[0.1] * 384,
+                payload={
+                    "content": "Original content",
+                    "type": "incident",
+                    "tags": ["original"],
+                    "source": "github",
+                    "file_paths": ["src/api.py"],
+                    "created_at": "2026-01-14T12:00:00+00:00",
+                },
+            )
+        ]
+
+        result = await kb.update(
+            point_id="entry-123",
+            type="bug",  # Only update type
+        )
+
+        assert result["type"] == "bug"
+        assert result["content"] == "Original content"
+        assert result["tags"] == ["original"]
+        assert result["source"] == "github"
+        assert result["file_paths"] == ["src/api.py"]
+        assert result["created_at"] == "2026-01-14T12:00:00+00:00"

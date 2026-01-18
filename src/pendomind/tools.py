@@ -442,3 +442,148 @@ async def list_all(
         }
         for entry in entries
     ]
+
+
+async def update(
+    id: str,
+    content: str | None = None,
+    tags: list[str] | None = None,
+    type: str | None = None,
+    file_paths: list[str] | None = None,
+    kb: Any | None = None,
+) -> dict[str, Any]:
+    """Update an existing knowledge entry by ID.
+
+    Only provided fields are updated; others remain unchanged.
+    If content changes, the entry is re-embedded for accurate search.
+
+    Args:
+        id: ID of the entry to update
+        content: New content (triggers re-embedding if provided)
+        tags: New tags list
+        type: New type
+        file_paths: New file paths list
+        kb: KnowledgeBase instance (injected for testing)
+
+    Returns:
+        Updated entry dict
+
+    Raises:
+        ValueError: If entry not found
+    """
+    if kb is None:
+        from pendomind.knowledge import KnowledgeBase
+
+        kb = KnowledgeBase()
+
+    return await kb.update(
+        point_id=id,
+        content=content,
+        tags=tags,
+        type=type,
+        file_paths=file_paths,
+    )
+
+
+async def delete(
+    id: str,
+    kb: Any | None = None,
+) -> dict[str, str]:
+    """Delete a knowledge entry by ID.
+
+    Args:
+        id: ID of the entry to delete
+        kb: KnowledgeBase instance (injected for testing)
+
+    Returns:
+        Status dict
+    """
+    if kb is None:
+        from pendomind.knowledge import KnowledgeBase
+
+        kb = KnowledgeBase()
+
+    await kb.delete(id)
+    return {"status": "deleted", "id": id}
+
+
+async def upsert(
+    content: str,
+    type: str,
+    tags: list[str],
+    source: str = "claude_session",
+    file_paths: list[str] | None = None,
+    similarity_threshold: float = 0.85,
+    kb: Any | None = None,
+) -> dict[str, Any]:
+    """Smart update-or-create: finds similar entry and updates it, or creates new.
+
+    This is the recommended tool when you want to update an existing entry
+    but don't have the exact ID. It automatically:
+    1. Searches for similar existing entries
+    2. If a match above threshold is found, updates that entry
+    3. If no match, creates a new entry
+
+    Args:
+        content: The knowledge content
+        type: Knowledge type (bug, feature, incident, etc.)
+        tags: List of tags for categorization
+        source: Source of the content
+        file_paths: Related file paths
+        similarity_threshold: How similar an existing entry must be to update (default 0.85)
+        kb: KnowledgeBase instance (injected for testing)
+
+    Returns:
+        Result dict with status ('updated' or 'created'), id, and details
+    """
+    if kb is None:
+        from pendomind.knowledge import KnowledgeBase
+
+        kb = KnowledgeBase()
+
+    # Generate embedding for the new content
+    embedding = await kb.get_embedding(content)
+
+    # Search for similar existing entries
+    similar = await kb.find_duplicates(embedding, threshold=similarity_threshold)
+
+    if similar:
+        # Found a similar entry - update it
+        existing = similar[0]  # Take the most similar one
+        existing_id = existing["id"]
+
+        updated = await kb.update(
+            point_id=existing_id,
+            content=content,
+            tags=tags,
+            type=type,
+            file_paths=file_paths,
+        )
+
+        return {
+            "status": "updated",
+            "id": existing_id,
+            "previous_similarity": existing["similarity_score"],
+            "previous_content_preview": existing.get("content_preview", ""),
+            **updated,
+        }
+    else:
+        # No similar entry found - create new
+        point_id = await kb.store(
+            content=content,
+            type=type,
+            tags=tags,
+            source=source,
+            file_paths=file_paths,
+            embedding=embedding,
+        )
+
+        return {
+            "status": "created",
+            "id": point_id,
+            "content": content,
+            "type": type,
+            "tags": tags,
+            "source": source,
+            "file_paths": file_paths,
+        }

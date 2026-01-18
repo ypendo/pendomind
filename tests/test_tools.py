@@ -814,3 +814,222 @@ class TestListAllTool:
         results = await list_all(kb=mock_kb)
 
         assert results == []
+
+
+class TestUpdateTool:
+    """Test the update MCP tool."""
+
+    @pytest.fixture
+    def mock_kb(self):
+        """Mock knowledge base."""
+        mock = MagicMock()
+        mock.update = AsyncMock(
+            return_value={
+                "id": "entry-123",
+                "content": "Updated content",
+                "type": "bug",
+                "tags": ["updated"],
+                "source": "github",
+                "created_at": "2026-01-14T12:00:00+00:00",
+                "updated_at": "2026-01-15T10:00:00+00:00",
+            }
+        )
+        return mock
+
+    @pytest.mark.asyncio
+    async def test_update_calls_kb_update(self, mock_kb):
+        """update() should delegate to kb.update()."""
+        from pendomind.tools import update
+
+        result = await update(
+            id="entry-123",
+            content="Updated content",
+            kb=mock_kb,
+        )
+
+        mock_kb.update.assert_called_once_with(
+            point_id="entry-123",
+            content="Updated content",
+            tags=None,
+            type=None,
+            file_paths=None,
+        )
+        assert result["id"] == "entry-123"
+        assert result["content"] == "Updated content"
+
+    @pytest.mark.asyncio
+    async def test_update_with_all_fields(self, mock_kb):
+        """update() should pass all fields to kb.update()."""
+        from pendomind.tools import update
+
+        await update(
+            id="entry-123",
+            content="New content",
+            tags=["new", "tags"],
+            type="incident",
+            file_paths=["src/new.py"],
+            kb=mock_kb,
+        )
+
+        mock_kb.update.assert_called_once_with(
+            point_id="entry-123",
+            content="New content",
+            tags=["new", "tags"],
+            type="incident",
+            file_paths=["src/new.py"],
+        )
+
+
+class TestDeleteTool:
+    """Test the delete MCP tool."""
+
+    @pytest.fixture
+    def mock_kb(self):
+        """Mock knowledge base."""
+        mock = MagicMock()
+        mock.delete = AsyncMock()
+        return mock
+
+    @pytest.mark.asyncio
+    async def test_delete_calls_kb_delete(self, mock_kb):
+        """delete() should delegate to kb.delete()."""
+        from pendomind.tools import delete
+
+        result = await delete(id="entry-123", kb=mock_kb)
+
+        mock_kb.delete.assert_called_once_with("entry-123")
+        assert result["status"] == "deleted"
+        assert result["id"] == "entry-123"
+
+
+class TestUpsertTool:
+    """Test the upsert (smart update-or-create) MCP tool."""
+
+    @pytest.fixture
+    def mock_kb(self):
+        """Mock knowledge base."""
+        mock = MagicMock()
+        mock.get_embedding = AsyncMock(return_value=[0.1] * 384)
+        mock.find_duplicates = AsyncMock(return_value=[])
+        mock.store = AsyncMock(return_value="new-entry-123")
+        mock.update = AsyncMock(
+            return_value={
+                "id": "existing-456",
+                "content": "Updated content",
+                "type": "incident",
+                "tags": ["updated"],
+                "source": "github",
+                "created_at": "2026-01-14T12:00:00+00:00",
+                "updated_at": "2026-01-15T10:00:00+00:00",
+            }
+        )
+        return mock
+
+    @pytest.mark.asyncio
+    async def test_upsert_creates_new_when_no_similar(self, mock_kb):
+        """upsert() should create new entry when no similar found."""
+        mock_kb.find_duplicates = AsyncMock(return_value=[])
+
+        from pendomind.tools import upsert
+
+        result = await upsert(
+            content="Brand new incident investigation",
+            type="incident",
+            tags=["new"],
+            source="claude_session",
+            kb=mock_kb,
+        )
+
+        mock_kb.store.assert_called_once()
+        assert result["status"] == "created"
+        assert result["id"] == "new-entry-123"
+
+    @pytest.mark.asyncio
+    async def test_upsert_updates_when_similar_found(self, mock_kb):
+        """upsert() should update existing entry when similar found."""
+        mock_kb.find_duplicates = AsyncMock(
+            return_value=[
+                {
+                    "id": "existing-456",
+                    "similarity_score": 0.92,
+                    "content_preview": "Previous incident content...",
+                    "type": "incident",
+                }
+            ]
+        )
+
+        from pendomind.tools import upsert
+
+        result = await upsert(
+            content="Updated incident with resolution",
+            type="incident",
+            tags=["resolved"],
+            source="claude_session",
+            kb=mock_kb,
+        )
+
+        mock_kb.update.assert_called_once()
+        mock_kb.store.assert_not_called()
+        assert result["status"] == "updated"
+        assert result["id"] == "existing-456"
+        assert result["previous_similarity"] == 0.92
+
+    @pytest.mark.asyncio
+    async def test_upsert_uses_similarity_threshold(self, mock_kb):
+        """upsert() should use the provided similarity threshold."""
+        from pendomind.tools import upsert
+
+        await upsert(
+            content="Content to check",
+            type="bug",
+            tags=[],
+            similarity_threshold=0.80,
+            kb=mock_kb,
+        )
+
+        mock_kb.find_duplicates.assert_called_once()
+        call_args = mock_kb.find_duplicates.call_args
+        assert call_args[1]["threshold"] == 0.80
+
+    @pytest.mark.asyncio
+    async def test_upsert_updates_most_similar(self, mock_kb):
+        """upsert() should update the most similar entry (first in list)."""
+        mock_kb.find_duplicates = AsyncMock(
+            return_value=[
+                {
+                    "id": "most-similar",
+                    "similarity_score": 0.95,
+                    "content_preview": "Most similar...",
+                    "type": "incident",
+                },
+                {
+                    "id": "less-similar",
+                    "similarity_score": 0.88,
+                    "content_preview": "Less similar...",
+                    "type": "incident",
+                },
+            ]
+        )
+        # Override update return for this test
+        mock_kb.update = AsyncMock(
+            return_value={
+                "id": "most-similar",
+                "content": "Updated content",
+                "type": "incident",
+                "tags": [],
+            }
+        )
+
+        from pendomind.tools import upsert
+
+        result = await upsert(
+            content="Updated content",
+            type="incident",
+            tags=[],
+            kb=mock_kb,
+        )
+
+        # Should update the most similar (first in list)
+        call_kwargs = mock_kb.update.call_args[1]
+        assert call_kwargs["point_id"] == "most-similar"
+        assert result["id"] == "most-similar"
