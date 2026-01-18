@@ -1,6 +1,6 @@
 # PendoMind
 
-An engineering knowledge base with MCP integration and built-in **data quality control**.
+**Persistent memory layer for Pendo's AI coding assistants.**
 
 ## Features
 
