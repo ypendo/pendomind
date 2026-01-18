@@ -313,3 +313,101 @@ class KnowledgeBase:
             collection_name=self.config.qdrant.collection_name,
             points_selector=[point_id],
         )
+
+    async def get_by_id(self, point_id: str) -> dict[str, Any] | None:
+        """Get a knowledge entry by its ID.
+
+        Args:
+            point_id: ID of the entry to retrieve
+
+        Returns:
+            Entry dict with payload, or None if not found
+        """
+        response = self._client.retrieve(
+            collection_name=self.config.qdrant.collection_name,
+            ids=[point_id],
+            with_vectors=True,  # Need vectors for metadata-only updates
+        )
+
+        if not response:
+            return None
+
+        point = response[0]
+        return {
+            "id": point.id,
+            "vector": point.vector,
+            **point.payload,
+        }
+
+    async def update(
+        self,
+        point_id: str,
+        content: str | None = None,
+        tags: list[str] | None = None,
+        type: str | None = None,
+        file_paths: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Update an existing entry by ID.
+
+        Only provided fields are updated; others remain unchanged.
+        If content changes, the entry is re-embedded for accurate search.
+
+        Args:
+            point_id: ID of the entry to update
+            content: New content (triggers re-embedding if provided)
+            tags: New tags list
+            type: New type
+            file_paths: New file paths list
+
+        Returns:
+            Updated entry dict
+
+        Raises:
+            ValueError: If entry not found
+        """
+        # Fetch existing entry
+        existing = await self.get_by_id(point_id)
+        if not existing:
+            raise ValueError(f"Entry not found: {point_id}")
+
+        # Merge fields (keep existing if not provided)
+        new_content = content if content is not None else existing["content"]
+        new_tags = tags if tags is not None else existing["tags"]
+        new_type = type if type is not None else existing["type"]
+        new_file_paths = (
+            file_paths if file_paths is not None else existing.get("file_paths")
+        )
+
+        # Build payload
+        payload = {
+            "content": new_content,
+            "type": new_type,
+            "tags": new_tags,
+            "source": existing["source"],  # Keep original source
+            "file_paths": new_file_paths,
+            "created_at": existing["created_at"],  # Keep original timestamp
+            "updated_at": datetime.now(UTC).isoformat(),
+        }
+
+        # If content changed, re-embed and do full upsert
+        if content is not None:
+            embedding = await self.get_embedding(new_content)
+            self._client.upsert(
+                collection_name=self.config.qdrant.collection_name,
+                points=[
+                    PointStruct(
+                        id=point_id,
+                        vector=embedding,
+                        payload=payload,
+                    )
+                ],
+            )
+        else:
+            # Metadata-only update - use set_payload for efficiency
+            self._client.set_payload(
+                collection_name=self.config.qdrant.collection_name,
+                payload=payload,
+                points=[point_id],
+            )
+
+        return {"id": point_id, **payload}
