@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is PendoMind?
 
-An MCP server that provides a persistent engineering knowledge base. It stores bug fixes, debugging sessions, feature implementations, and investigations with quality control to prevent garbage data.
+A simple memory persistence layer for Claude. Stores facts, notes, and learnings with semantic search powered by SQLite + sqlite-vec. No Docker required - just works.
 
 ## Python Environment
 
@@ -23,8 +23,6 @@ The virtual environment is located at: `~/.pyenv/versions/3.12.2/envs/pendomind`
 
 ## Commands
 
-All commands assume the virtual environment is activated or use full paths.
-
 ```bash
 # Run all tests
 ~/.pyenv/versions/3.12.2/envs/pendomind/bin/pytest tests/ -v
@@ -33,13 +31,7 @@ All commands assume the virtual environment is activated or use full paths.
 ~/.pyenv/versions/3.12.2/envs/pendomind/bin/pytest tests/ -v --cov=pendomind --cov-report=term-missing
 
 # Run a single test file
-~/.pyenv/versions/3.12.2/envs/pendomind/bin/pytest tests/test_quality.py -v
-
-# Run a single test
-~/.pyenv/versions/3.12.2/envs/pendomind/bin/pytest tests/test_quality.py::TestRelevanceScoring::test_high_relevance_bug_with_stack_trace -v
-
-# Start Qdrant (required for runtime)
-docker run -d -p 6333:6333 --name pendomind-qdrant qdrant/qdrant
+~/.pyenv/versions/3.12.2/envs/pendomind/bin/pytest tests/test_memory.py -v
 
 # Run the MCP server
 ~/.pyenv/versions/3.12.2/envs/pendomind/bin/python -m pendomind.main
@@ -51,73 +43,75 @@ docker run -d -p 6333:6333 --name pendomind-qdrant qdrant/qdrant
 ## Architecture
 
 ```
-Claude Code ──stdio──▶ FastMCP Server ──▶ Qdrant (Docker)
-                       │                   localhost:6333
+Claude Code ──stdio──▶ FastMCP Server ──▶ SQLite + sqlite-vec
+                       │                   ~/.pendomind/memory.db
                        │
-                       ├── QualityMiddleware
-                       ├── QualityScorer
-                       ├── PendingStore
-                       └── KnowledgeBase
+                       └── MemoryStore
 ```
 
 ### Module Responsibilities
 
 | Module | Purpose |
 |--------|---------|
-| `main.py` | FastMCP server entry point, registers all 7 MCP tools |
-| `knowledge.py` | Qdrant wrapper: store, search, find_duplicates, get_by_file_path |
-| `middleware.py` | Quality control: validates content, routes to approve/reject/pending |
-| `quality.py` | Scoring: relevance (keywords), completeness (structure), credibility (source) |
-| `tools.py` | MCP tool implementations + PendingStore for user confirmation workflow |
-| `config.py` | Loads `config/quality_rules.yaml`, provides typed config dataclasses |
-
-### Quality Control Flow
-
-```
-remember_knowledge() → QualityMiddleware.process()
-                           │
-                           ├── validate_type()      → reject if invalid type
-                           ├── validate_content()   → reject if contains secrets
-                           ├── validate_length()    → reject if too short/long
-                           ├── QualityScorer.score() → calculate 0-1 score
-                           │
-                           └── Route by score:
-                               < 0.65  → auto-reject
-                               > 0.85  → auto-approve → KnowledgeBase.store()
-                               else    → pending → PendingStore.add()
-```
+| `main.py` | FastMCP server entry point, registers 6 simple MCP tools |
+| `memory.py` | SQLite + sqlite-vec backend: store, search, delete, list |
+| `config.py` | Minimal config: db_path, embedding settings |
 
 ### Embedding Model
 
 Uses **FastEmbed** with `BAAI/bge-small-en-v1.5` (384 dimensions). Runs locally - no API keys needed. Model cached in `~/.cache/fastembed/` after first download (~130MB).
 
+### Database
+
+Uses **sqlite-vec** for vector similarity search, loaded via **APSW** (for macOS extension support). Database stored at `~/.pendomind/memory.db`.
+
+Tables:
+- `memories` - Main metadata (id, content, type, tags, timestamps)
+- `memories_vec` - Vector embeddings (sqlite-vec virtual table)
+- `memory_vectors` - Mapping between memory IDs and vector rowids
+
 ## Testing
 
-All tests mock external dependencies (Qdrant, FastEmbed). See `tests/conftest.py` for shared fixtures.
+Tests mock FastEmbed. See `tests/conftest.py` for shared fixtures.
 
 ```python
 # Pattern for mocking FastEmbed in tests
-with patch("pendomind.knowledge.TextEmbedding") as mock_fastembed:
+with patch("pendomind.memory.TextEmbedding") as mock_fastembed:
     mock_embedder = MagicMock()
     mock_embedder.embed.return_value = iter([np.array([0.1] * 384)])
     mock_fastembed.return_value = mock_embedder
 ```
 
-## Knowledge Types
+## Memory Types
 
-7 types with configurable quality thresholds in `config/quality_rules.yaml`:
-- `bug`, `feature`, `debugging`, `error` → threshold 0.65
-- `incident`, `investigation` → threshold 0.60 (lenient)
-- `architecture` → threshold 0.75 (strict)
+3 simple types:
+- `fact` - Verified information, solutions, configs
+- `note` - Observations, ideas, WIP thoughts (default)
+- `learning` - Lessons learned, insights, patterns
 
-## MCP Tools (7 total)
+## MCP Tools (6 total)
 
-| Tool | Purpose |
-|------|---------|
-| `search_knowledge` | Semantic search |
-| `remember_knowledge` | Store with quality control |
-| `confirm_knowledge` | Confirm/reject pending entries |
-| `recall_context` | Get formatted context |
-| `find_similar` | Check for duplicates |
-| `get_file_context` | Get file-related knowledge |
-| `list_pending` | List pending entries |
+| Tool | Purpose | Parameters |
+|------|---------|------------|
+| `remember` | Store a memory | `content`, `tags?`, `type?` |
+| `search` | Semantic search | `query`, `limit?`, `type?` |
+| `forget` | Delete by ID | `id` |
+| `list_memories` | List all memories | `limit?`, `type?` |
+| `recall` | Get context for prompts | `query`, `limit?` |
+| `similar` | Find duplicates | `content` |
+
+## Example Usage
+
+```python
+# Store a memory
+remember("Python's GIL only affects CPU-bound threads", tags=["python"])
+
+# Search semantically
+search("python threading")
+
+# List all memories
+list_memories()
+
+# Delete a memory
+forget("abc123-def456")
+```

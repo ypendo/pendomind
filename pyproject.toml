@@ -1,21 +1,21 @@
 [project]
 name = "pendomind"
-version = "0.1.0"
-description = "Engineering knowledge base with MCP integration and quality control"
+version = "2.0.0"
+description = "Simple memory persistence layer for Claude with semantic search"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
     {name = "Yuri Bondarenko"}
 ]
-keywords = ["mcp", "knowledge-base", "vector-db", "claude-code"]
+keywords = ["mcp", "memory", "vector-db", "claude-code", "sqlite"]
 
 dependencies = [
     "fastmcp>=2.9.0",
-    "qdrant-client>=1.7.0",
+    "sqlite-vec>=0.1.6",
+    "apsw>=3.40.0",  # SQLite wrapper with extension loading support
     "fastembed>=0.4.0",
     "pydantic>=2.0.0",
-    "pyyaml>=6.0.0",
 ]
 
 [project.optional-dependencies]
@@ -32,17 +32,14 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/pendomind"]
+packages = ["pendomind"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-markers = [
-    "integration: marks tests as integration tests (require Docker)",
-]
 
 [tool.coverage.run]
-source = ["src/pendomind"]
+source = ["pendomind"]
 branch = true
 
 [tool.coverage.report]
